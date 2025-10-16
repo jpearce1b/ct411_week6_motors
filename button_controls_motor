@@ -20,7 +20,7 @@ const unsigned long stepDelayMs = 10;   // delay between steps
 unsigned long lastStepTime = 0;
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   pinMode(buttonPin, INPUT_PULLUP);
 
   // Widen pulse range for better compatibility with different servos
