@@ -1,0 +1,46 @@
+#include <Servo.h>
+
+Servo myServo;
+
+const int buttonPin = 2;   // Button input
+const int servoPin  = 9;   // Servo control pin
+
+int buttonState;           // Current button reading
+int lastButtonState = HIGH; // Last button reading (starts HIGH because of pull-up)
+bool servoAt180 = false;   // Tracks servo position
+
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50; // ms for debounce stability
+
+void setup() {
+  myServo.attach(servoPin);
+  pinMode(buttonPin, INPUT_PULLUP); // Enable internal pull-up resistor
+  myServo.write(0);                 // Start at 0 degrees
+  Serial.begin(9600);
+}
+
+void loop() {
+  int reading = digitalRead(buttonPin);
+
+  // Check for state change (with debounce)
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // If button state is LOW (pressed)
+    if (reading == LOW && lastButtonState == HIGH) {
+      // Toggle servo position
+      if (servoAt180) {
+        myServo.write(0);
+        Serial.println("Servo → 0°");
+      } else {
+        myServo.write(180);
+        Serial.println("Servo → 180°");
+      }
+      servoAt180 = !servoAt180; // Flip state
+    }
+  }
+
+  lastButtonState = reading;
+}
