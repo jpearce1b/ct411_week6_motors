@@ -1,0 +1,138 @@
+#include <Servo.h>
+
+Servo myServo;
+
+const int buttonPin = 2;     // Button with internal pull-up
+const int servoPin  = 9;     // Servo signal pin
+const int ledPin    = 6;     // LED indicator pin
+const int potPin    = A0;    // Pot to control speed
+
+// Debounce
+int lastButtonReading = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50; // ms
+
+// Servo motion state
+int currentAngle = 0;
+int targetAngle  = 0;
+bool moving      = false;
+
+const int stepSize = 1;      // degrees per step
+unsigned long stepDelayMs = 10; // will be set from potentiometer
+unsigned long lastStepTime = 0;
+
+// Pot config: map 0–1023 to a usable delay range (fast ↔ slow)
+const unsigned long MIN_DELAY_MS = 2;   // fastest
+const unsigned long MAX_DELAY_MS = 40;  // slowest
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
+
+  myServo.attach(servoPin, 500, 2500);
+
+  currentAngle = 0;
+  targetAngle  = 0;
+  myServo.write(currentAngle);
+
+  Serial.println("=== Servo Toggle + LED + Speed Pot ===");
+  Serial.println("Button: D2 (INPUT_PULLUP) | Servo: D9 | LED: D6 | Pot: A0");
+  Serial.println("Turn the pot to change speed (fast at low delay).");
+  Serial.println("-----------------------------------------------");
+}
+
+void loop() {
+  // ----- Read pot & compute delay -----
+  int potValue = analogRead(potPin); // 0..1023
+  // Map pot so: clockwise (higher value) = faster or slower?
+  // Here we make higher value = FASTER (smaller delay).
+  stepDelayMs = map(potValue, 0, 1023, MAX_DELAY_MS, MIN_DELAY_MS);
+
+  // Approximate speed in degrees/sec:
+  float degPerSec = (1000.0f / (float)stepDelayMs) * stepSize;
+
+  // Print occasionally so we don’t spam the monitor
+  static unsigned long lastPotPrint = 0;
+  if (millis() - lastPotPrint > 300) {
+    Serial.print("[POT] raw=");
+    Serial.print(potValue);
+    Serial.print("  stepDelayMs=");
+    Serial.print(stepDelayMs);
+    Serial.print("  ~");
+    Serial.print(degPerSec, 1);
+    Serial.println(" deg/s");
+    lastPotPrint = millis();
+  }
+
+  // ----- Read & debounce button -----
+  int reading = digitalRead(buttonPin);
+  if (reading != lastButtonReading) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    static int lastStableState = HIGH;
+    if (reading != lastStableState) {
+      lastStableState = reading;
+
+      if (reading == LOW) {
+        // Toggle target angle
+        targetAngle = (targetAngle == 0) ? 180 : 0;
+        moving = true;
+        Serial.print("[BUTTON] New target: ");
+        Serial.print(targetAngle);
+        Serial.println("°");
+      }
+    }
+  }
+  lastButtonReading = reading;
+
+  // ----- Smooth movement -----
+  if (moving && (millis() - lastStepTime >= stepDelayMs)) {
+    lastStepTime = millis();
+
+    if (currentAngle < targetAngle) {
+      currentAngle += stepSize;
+      if (currentAngle > targetAngle) currentAngle = targetAngle;
+    } else if (currentAngle > targetAngle) {
+      currentAngle -= stepSize;
+      if (currentAngle < targetAngle) currentAngle = targetAngle;
+    }
+
+    myServo.write(currentAngle);
+
+    // Report progress occasionally
+    static int lastReported = -999;
+    if (lastReported == -999 || abs(currentAngle - lastReported) >= 10 || currentAngle == targetAngle) {
+      Serial.print("[MOVE] Angle: ");
+      Serial.print(currentAngle);
+      Serial.print(" / Target: ");
+      Serial.print(targetAngle);
+      Serial.print("  (");
+      Serial.print(degPerSec, 1);
+      Serial.println(" deg/s)");
+      lastReported = currentAngle;
+    }
+
+    // ----- When finished moving -----
+    if (currentAngle == targetAngle) {
+      moving = false;
+      Serial.print("[DONE] Reached ");
+      Serial.print(targetAngle);
+      Serial.println("°");
+
+      // LED control: ON at 180°, OFF at 0°
+      if (targetAngle == 180) {
+        digitalWrite(ledPin, HIGH);
+        Serial.println("[LED] ON (servo at 180°)");
+      } else {
+        digitalWrite(ledPin, LOW);
+        Serial.println("[LED] OFF (servo at 0°)");
+      }
+
+      Serial.println("-----------------------------------------------");
+    }
+  }
+}
