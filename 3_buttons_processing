@@ -1,0 +1,34 @@
+// Pin assignments for buttons
+const int button1Pin = 2;
+const int button2Pin = 3;
+const int button3Pin = 4;
+
+void setup() {
+  // Initialize the buttons as input with internal pullup resistors
+  pinMode(button1Pin, INPUT_PULLUP);
+  pinMode(button2Pin, INPUT_PULLUP);
+  pinMode(button3Pin, INPUT_PULLUP);
+
+  // Start the serial communication
+  Serial.begin(9600);
+}
+
+void loop() {
+  // Check if button 1 is pressed (low state since using INPUT_PULLUP)
+  if (digitalRead(button1Pin) == LOW) {
+    Serial.println("1");
+    delay(200);  // Debounce delay
+  }
+
+  // Check if button 2 is pressed
+  if (digitalRead(button2Pin) == LOW) {
+    Serial.println("2");
+    delay(200);  // Debounce delay
+  }
+
+  // Check if button 3 is pressed
+  if (digitalRead(button3Pin) == LOW) {
+    Serial.println("3");
+    delay(200);  // Debounce delay
+  }
+}
