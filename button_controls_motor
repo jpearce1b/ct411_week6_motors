@@ -2,45 +2,98 @@
 
 Servo myServo;
 
-const int buttonPin = 2;   // Button input
-const int servoPin  = 9;   // Servo control pin
+const int buttonPin = 2;    // Button with internal pull-up
+const int servoPin  = 9;    // Servo signal pin
 
-int buttonState;           // Current button reading
-int lastButtonState = HIGH; // Last button reading (starts HIGH because of pull-up)
-bool servoAt180 = false;   // Tracks servo position
-
+// Debounce
+int lastButtonReading = HIGH;           // due to INPUT_PULLUP
 unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50; // ms for debounce stability
+const unsigned long debounceDelay = 50; // ms
+
+// Servo motion state
+int currentAngle = 0;
+int targetAngle  = 0;
+bool moving      = false;
+
+const int stepSize = 1;                 // degrees per step (smoothness)
+const unsigned long stepDelayMs = 10;   // delay between steps
+unsigned long lastStepTime = 0;
 
 void setup() {
-  myServo.attach(servoPin);
-  pinMode(buttonPin, INPUT_PULLUP); // Enable internal pull-up resistor
-  myServo.write(0);                 // Start at 0 degrees
-  Serial.begin(9600);
+  Serial.begin(115200);
+  pinMode(buttonPin, INPUT_PULLUP);
+
+  // Widen pulse range for better compatibility with different servos
+  myServo.attach(servoPin, 500, 2500);
+
+  currentAngle = 0;
+  targetAngle  = 0;
+  myServo.write(currentAngle);
+
+  Serial.println("=== Servo Toggle with Smooth Sweep ===");
+  Serial.println("Button: pin 2 (INPUT_PULLUP) -> press = LOW");
+  Serial.print("Servo pin: "); Serial.println(servoPin);
+  Serial.print("Start angle: "); Serial.println(currentAngle);
+  Serial.println("--------------------------------------------------");
 }
 
 void loop() {
+  // ----- Read & debounce button -----
   int reading = digitalRead(buttonPin);
-
-  // Check for state change (with debounce)
-  if (reading != lastButtonState) {
+  if (reading != lastButtonReading) {
     lastDebounceTime = millis();
   }
 
+  // Confirmed stable change
   if ((millis() - lastDebounceTime) > debounceDelay) {
-    // If button state is LOW (pressed)
-    if (reading == LOW && lastButtonState == HIGH) {
-      // Toggle servo position
-      if (servoAt180) {
-        myServo.write(0);
-        Serial.println("Servo → 0°");
-      } else {
-        myServo.write(180);
-        Serial.println("Servo → 180°");
+    // Detect a press (transition from HIGH to LOW)
+    static int lastStableState = HIGH;
+    if (reading != lastStableState) {
+      lastStableState = reading;
+
+      if (reading == LOW) {
+        // Toggle target between 0 and 180 on each press
+        targetAngle = (targetAngle == 0) ? 180 : 0;
+        moving = true;
+        Serial.print("[BUTTON] Press detected. New target: ");
+        Serial.print(targetAngle);
+        Serial.println(" deg");
       }
-      servoAt180 = !servoAt180; // Flip state
     }
   }
+  lastButtonReading = reading;
 
-  lastButtonState = reading;
+  // ----- Smooth movement towards target -----
+  if (moving && (millis() - lastStepTime >= stepDelayMs)) {
+    lastStepTime = millis();
+
+    if (currentAngle < targetAngle) {
+      currentAngle += stepSize;
+      if (currentAngle > targetAngle) currentAngle = targetAngle;
+    } else if (currentAngle > targetAngle) {
+      currentAngle -= stepSize;
+      if (currentAngle < targetAngle) currentAngle = targetAngle;
+    }
+
+    myServo.write(currentAngle);
+
+    // Debug prints at start, every 10°, and at end
+    static int lastReported = -999;
+    if (lastReported == -999 || abs(currentAngle - lastReported) >= 10 || currentAngle == targetAngle) {
+      Serial.print("[MOVE] Angle: ");
+      Serial.print(currentAngle);
+      Serial.print(" / Target: ");
+      Serial.println(targetAngle);
+      lastReported = currentAngle;
+    }
+
+    if (currentAngle == targetAngle) {
+      moving = false;
+      Serial.print("[DONE] Reached ");
+      Serial.print(targetAngle);
+      Serial.println(" deg");
+      Serial.println("--------------------------------------------------");
+    }
+  }
 }
+
