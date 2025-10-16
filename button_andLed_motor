@@ -1,0 +1,109 @@
+#include <Servo.h>
+
+Servo myServo;
+
+const int buttonPin = 2;    // Button with internal pull-up
+const int servoPin  = 9;    // Servo signal pin
+const int ledPin    = 6;    // LED indicator pin
+
+// Debounce
+int lastButtonReading = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50; // ms
+
+// Servo motion state
+int currentAngle = 0;
+int targetAngle  = 0;
+bool moving      = false;
+
+const int stepSize = 1;               // degrees per step
+const unsigned long stepDelayMs = 10; // ms between steps
+unsigned long lastStepTime = 0;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);          // LED off initially
+
+  myServo.attach(servoPin, 500, 2500);
+
+  currentAngle = 0;
+  targetAngle  = 0;
+  myServo.write(currentAngle);
+
+  Serial.println("=== Servo Toggle + LED Indicator ===");
+  Serial.println("Button on pin 2 (INPUT_PULLUP)");
+  Serial.println("Servo on pin 9");
+  Serial.println("LED on pin 6");
+  Serial.println("--------------------------------------");
+}
+
+void loop() {
+  // ----- Read & debounce button -----
+  int reading = digitalRead(buttonPin);
+  if (reading != lastButtonReading) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    static int lastStableState = HIGH;
+    if (reading != lastStableState) {
+      lastStableState = reading;
+
+      if (reading == LOW) {
+        // Toggle target angle
+        targetAngle = (targetAngle == 0) ? 180 : 0;
+        moving = true;
+        Serial.print("[BUTTON] New target: ");
+        Serial.print(targetAngle);
+        Serial.println("°");
+      }
+    }
+  }
+  lastButtonReading = reading;
+
+  // ----- Smooth movement -----
+  if (moving && (millis() - lastStepTime >= stepDelayMs)) {
+    lastStepTime = millis();
+
+    if (currentAngle < targetAngle) {
+      currentAngle += stepSize;
+      if (currentAngle > targetAngle) currentAngle = targetAngle;
+    } else if (currentAngle > targetAngle) {
+      currentAngle -= stepSize;
+      if (currentAngle < targetAngle) currentAngle = targetAngle;
+    }
+
+    myServo.write(currentAngle);
+
+    // Report periodically
+    static int lastReported = -999;
+    if (lastReported == -999 || abs(currentAngle - lastReported) >= 10 || currentAngle == targetAngle) {
+      Serial.print("[MOVE] Angle: ");
+      Serial.print(currentAngle);
+      Serial.print(" / Target: ");
+      Serial.println(targetAngle);
+      lastReported = currentAngle;
+    }
+
+    // ----- When finished moving -----
+    if (currentAngle == targetAngle) {
+      moving = false;
+      Serial.print("[DONE] Reached ");
+      Serial.print(targetAngle);
+      Serial.println("°");
+
+      // LED indicator logic
+      if (targetAngle == 180) {
+        digitalWrite(ledPin, HIGH);
+        Serial.println("[LED] ON (servo at 180°)");
+      } else {
+        digitalWrite(ledPin, LOW);
+        Serial.println("[LED] OFF (servo at 0°)");
+      }
+
+      Serial.println("--------------------------------------");
+    }
+  }
+}
